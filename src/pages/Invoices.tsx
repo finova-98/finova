@@ -1,39 +1,58 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { InvoiceCard } from "@/components/cards/InvoiceCard";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Search, Filter, SlidersHorizontal } from "lucide-react";
+import { Search } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useNavigate } from "react-router-dom";
+import { Skeleton } from "@/components/ui/skeleton";
 
-const allInvoices = [
-  { id: "1", vendor: "AWS Services", date: "Dec 5, 2024", amount: 1250, status: "paid" as const },
-  { id: "2", vendor: "Notion", date: "Dec 3, 2024", amount: 96, status: "paid" as const },
-  { id: "3", vendor: "Figma Pro", date: "Dec 1, 2024", amount: 180, status: "pending" as const },
-  { id: "4", vendor: "Vercel", date: "Nov 28, 2024", amount: 240, status: "paid" as const },
-  { id: "5", vendor: "Slack Business", date: "Nov 25, 2024", amount: 450, status: "paid" as const },
-  { id: "6", vendor: "GitHub Enterprise", date: "Nov 20, 2024", amount: 840, status: "pending" as const },
-  { id: "7", vendor: "Linear", date: "Nov 15, 2024", amount: 128, status: "paid" as const },
-  { id: "8", vendor: "Zoom Pro", date: "Nov 10, 2024", amount: 149, status: "overdue" as const },
-];
-
-type FilterStatus = "all" | "paid" | "pending" | "overdue";
+interface Invoice {
+  id: string;
+  vendor: string;
+  date: string;
+  total: number;
+  invoice_number: string;
+}
 
 export default function Invoices() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
-  const filteredInvoices = allInvoices.filter((invoice) => {
+  useEffect(() => {
+    fetchInvoices();
+  }, []);
+
+  async function fetchInvoices() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        navigate("/auth");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("date", { ascending: false });
+
+      if (error) throw error;
+      setInvoices(data || []);
+    } catch (error) {
+      console.error("Error fetching invoices:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const filteredInvoices = invoices.filter((invoice) => {
     const matchesSearch = invoice.vendor.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterStatus === "all" || invoice.status === filterStatus;
-    return matchesSearch && matchesFilter;
+    // Note: We don't have a status field in invoices table yet, so we'll show all for now
+    return matchesSearch;
   });
-
-  const filterButtons: { label: string; value: FilterStatus }[] = [
-    { label: "All", value: "all" },
-    { label: "Paid", value: "paid" },
-    { label: "Pending", value: "pending" },
-    { label: "Overdue", value: "overdue" },
-  ];
 
   return (
     <AppLayout title="Invoices">
@@ -49,48 +68,52 @@ export default function Invoices() {
           />
         </div>
 
-        {/* Filter Tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide animate-fade-in-up" style={{ animationDelay: "100ms" }}>
-          {filterButtons.map((filter) => (
-            <Button
-              key={filter.value}
-              variant={filterStatus === filter.value ? "default" : "gpt"}
-              size="sm"
-              onClick={() => setFilterStatus(filter.value)}
-              className="flex-shrink-0"
-            >
-              {filter.label}
-            </Button>
-          ))}
-        </div>
-
         {/* Results Count */}
-        <p className="text-sm text-muted-foreground animate-fade-in">
-          {filteredInvoices.length} invoice{filteredInvoices.length !== 1 ? 's' : ''}
-        </p>
+        {!loading && (
+          <p className="text-sm text-muted-foreground animate-fade-in">
+            {filteredInvoices.length} invoice{filteredInvoices.length !== 1 ? 's' : ''}
+          </p>
+        )}
 
-        {/* Invoice List */}
-        <div className="space-y-2">
-          {filteredInvoices.map((invoice, index) => (
-            <InvoiceCard
-              key={invoice.id}
-              {...invoice}
-              animationDelay={200 + index * 50}
-            />
-          ))}
-        </div>
-
-        {/* Empty State */}
-        {filteredInvoices.length === 0 && (
-          <div className="text-center py-12 animate-fade-in">
-            <div className="w-16 h-16 rounded-3xl bg-muted mx-auto mb-4 flex items-center justify-center">
-              <Search className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <h3 className="font-medium text-foreground mb-1">No invoices found</h3>
-            <p className="text-sm text-muted-foreground">
-              Try adjusting your search or filter
-            </p>
+        {/* Loading State */}
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
           </div>
+        ) : (
+          <>
+            {/* Invoice List */}
+            {filteredInvoices.length > 0 && (
+              <div className="space-y-2">
+                {filteredInvoices.map((invoice, index) => (
+                  <InvoiceCard
+                    key={invoice.id}
+                    id={invoice.id}
+                    vendor={invoice.vendor}
+                    date={invoice.date}
+                    amount={invoice.total}
+                    status="paid"
+                    animationDelay={200 + index * 50}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Empty State */}
+            {filteredInvoices.length === 0 && (
+              <div className="text-center py-12 animate-fade-in">
+                <div className="w-16 h-16 rounded-3xl bg-muted mx-auto mb-4 flex items-center justify-center">
+                  <Search className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="font-medium text-foreground mb-1">No invoices found</h3>
+                <p className="text-sm text-muted-foreground">
+                  {searchQuery ? "Try adjusting your search" : "Create your first invoice to get started"}
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </AppLayout>

@@ -23,5 +23,20 @@ dist-ssr
 *.sln
 *.sw?
 
-# env
+# Environment variables (CRITICAL - Contains API keys)
 .env
+.env.local
+.env.development
+.env.production
+.env.test
+.env*.local
+
+# Supabase
+.supabase
+
+# Agent and analysis files (may contain sensitive info)
+.agent/
+
+# Documentation with potential sensitive examples
+INTEGRATION_SUMMARY.md
+supabase-schema.sql

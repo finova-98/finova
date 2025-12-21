@@ -1,197 +1,315 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { UploadBox } from "@/components/upload/UploadBox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Loader2, FileText, AlertCircle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { CheckCircle2, Loader2, FileText, Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
+import { useNavigate } from "react-router-dom";
 
-interface ExtractedData {
-  vendor: string;
-  date: string;
-  total: number;
-  items: Array<{
-    description: string;
-    quantity: number;
-    price: number;
-  }>;
-  tax: number;
-  invoiceNumber: string;
+interface InvoiceItem {
+  description: string;
+  quantity: number;
+  price: number;
 }
 
 export default function Upload() {
   const { toast } = useToast();
-  const [file, setFile] = useState<File | null>(null);
-  const [isExtracting, setIsExtracting] = useState(false);
-  const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [isSaving, setIsSaving] = useState(false);
+  
+  const [formData, setFormData] = useState({
+    vendor: "",
+    invoiceNumber: "",
+    date: new Date().toISOString().split('T')[0],
+    tax: "",
+    notes: "",
+  });
+  
+  const [items, setItems] = useState<InvoiceItem[]>([
+    { description: "", quantity: 1, price: 0 }
+  ]);
 
-  const handleFileSelect = (selectedFile: File) => {
-    setFile(selectedFile);
-    setExtractedData(null);
-    setError(null);
+  const addItem = () => {
+    setItems([...items, { description: "", quantity: 1, price: 0 }]);
   };
 
-  const handleExtract = async () => {
-    if (!file) return;
+  const removeItem = (index: number) => {
+    if (items.length > 1) {
+      setItems(items.filter((_, i) => i !== index));
+    }
+  };
 
-    setIsExtracting(true);
-    setError(null);
+  const updateItem = (index: number, field: keyof InvoiceItem, value: string | number) => {
+    const newItems = [...items];
+    newItems[index] = { ...newItems[index], [field]: value };
+    setItems(newItems);
+  };
 
-    // Simulate API call with mock data
-    await new Promise(resolve => setTimeout(resolve, 2000));
+  const calculateSubtotal = () => {
+    return items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+  };
 
-    // Mock extracted data
-    const mockData: ExtractedData = {
-      vendor: "AWS Services Inc.",
-      date: "December 5, 2024",
-      total: 1250.00,
-      items: [
-        { description: "EC2 Instances - m5.large", quantity: 3, price: 350.00 },
-        { description: "S3 Storage - 500GB", quantity: 1, price: 150.00 },
-        { description: "CloudFront CDN", quantity: 1, price: 200.00 },
-      ],
-      tax: 100.00,
-      invoiceNumber: "INV-2024-1205",
-    };
+  const calculateTotal = () => {
+    const subtotal = calculateSubtotal();
+    const tax = parseFloat(formData.tax) || 0;
+    return subtotal + tax;
+  };
 
-    setExtractedData(mockData);
-    setIsExtracting(false);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-    toast({
-      title: "Invoice extracted!",
-      description: "Data has been successfully extracted from your invoice.",
-    });
+    if (!user || !formData.vendor || !formData.invoiceNumber) {
+      toast({
+        title: "Missing fields",
+        description: "Please fill in vendor and invoice number",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const total = calculateTotal();
+      
+      const { error } = await supabase.from('invoices').insert({
+        user_id: user.id,
+        file_url: null,
+        file_name: `Manual Entry - ${formData.invoiceNumber}`,
+        vendor: formData.vendor,
+        date: formData.date,
+        total: total,
+        invoice_number: formData.invoiceNumber,
+        extracted_data: {
+          vendor: formData.vendor,
+          date: formData.date,
+          total: total,
+          items: items,
+          tax: parseFloat(formData.tax) || 0,
+          invoiceNumber: formData.invoiceNumber,
+          notes: formData.notes,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Invoice saved!",
+        description: `${formData.invoiceNumber} has been added successfully.`,
+      });
+
+      // Reset form
+      setFormData({
+        vendor: "",
+        invoiceNumber: "",
+        date: new Date().toISOString().split('T')[0],
+        tax: "",
+        notes: "",
+      });
+      setItems([{ description: "", quantity: 1, price: 0 }]);
+      
+      // Navigate to dashboard
+      navigate('/dashboard');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save invoice';
+      toast({
+        title: "Save failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
-    <AppLayout title="Upload Invoice">
-      <div className="px-4 py-6 space-y-6 max-w-lg mx-auto">
-        {/* Upload Box */}
-        <div className="animate-fade-in-up">
-          <UploadBox onFileSelect={handleFileSelect} />
-        </div>
+    <AppLayout title="Add Invoice">
+      <div className="px-4 py-6 space-y-6 max-w-2xl mx-auto pb-24">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Basic Info Card */}
+          <Card className="animate-fade-in-up">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Invoice Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Vendor */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  Vendor Name <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  placeholder="e.g., AWS Services Inc."
+                  value={formData.vendor}
+                  onChange={(e) => setFormData({ ...formData, vendor: e.target.value })}
+                  required
+                />
+              </div>
 
-        {/* Extract Button */}
-        {file && !extractedData && (
-          <Button
-            className="w-full animate-fade-in-up"
-            size="lg"
-            onClick={handleExtract}
-            disabled={isExtracting}
-          >
-            {isExtracting ? (
-              <>
-                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                Extracting data...
-              </>
-            ) : (
-              <>
-                <FileText className="h-5 w-5 mr-2" />
-                Extract Invoice Data
-              </>
-            )}
-          </Button>
-        )}
-
-        {/* Error State */}
-        {error && (
-          <Card className="border-destructive/50 bg-destructive/5 animate-fade-in-up">
-            <CardContent className="p-4 flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-destructive" />
-              <p className="text-sm text-destructive">{error}</p>
+              {/* Invoice Number & Date */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">
+                    Invoice Number <span className="text-destructive">*</span>
+                  </label>
+                  <Input
+                    placeholder="INV-2024-001"
+                    value={formData.invoiceNumber}
+                    onChange={(e) => setFormData({ ...formData, invoiceNumber: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">
+                    Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={formData.date}
+                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  />
+                </div>
+              </div>
             </CardContent>
           </Card>
-        )}
 
-        {/* Extracted Data Display */}
-        {extractedData && (
-          <Card className="animate-fade-in-up overflow-hidden">
-            <CardHeader className="bg-primary/5 border-b border-border">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
-                  <CheckCircle2 className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <CardTitle className="text-base">Extraction Complete</CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    {extractedData.invoiceNumber}
-                  </p>
-                </div>
+          {/* Items Card */}
+          <Card className="animate-fade-in-up" style={{ animationDelay: "100ms" }}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Line Items</CardTitle>
+                <Button type="button" size="sm" variant="outline" onClick={addItem}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Item
+                </Button>
               </div>
             </CardHeader>
-            <CardContent className="p-4 space-y-4">
-              {/* Summary */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Vendor</p>
-                  <p className="font-medium text-foreground">{extractedData.vendor}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Date</p>
-                  <p className="font-medium text-foreground">{extractedData.date}</p>
-                </div>
-              </div>
-
-              {/* Items */}
-              <div>
-                <p className="text-xs text-muted-foreground mb-2">Items</p>
-                <div className="space-y-2">
-                  {extractedData.items.map((item, index) => (
-                    <div 
-                      key={index}
-                      className="flex items-center justify-between py-2 border-b border-border last:border-0"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-foreground truncate">
-                          {item.description}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Qty: {item.quantity}
-                        </p>
-                      </div>
-                      <p className="text-sm font-medium text-foreground">
-                        ${item.price.toFixed(2)}
-                      </p>
+            <CardContent className="space-y-4">
+              {items.map((item, index) => (
+                <div key={index} className="flex gap-2 items-start">
+                  <div className="flex-1 grid grid-cols-12 gap-2">
+                    <div className="col-span-6">
+                      <Input
+                        placeholder="Description"
+                        value={item.description}
+                        onChange={(e) => updateItem(index, 'description', e.target.value)}
+                      />
                     </div>
-                  ))}
+                    <div className="col-span-3">
+                      <Input
+                        type="number"
+                        placeholder="Qty"
+                        min="1"
+                        value={item.quantity}
+                        onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="Price"
+                        value={item.price}
+                        onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                  </div>
+                  {items.length > 1 && (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => removeItem(index)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Totals & Notes Card */}
+          <Card className="animate-fade-in-up" style={{ animationDelay: "200ms" }}>
+            <CardContent className="pt-6 space-y-4">
+              {/* Tax */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  Tax Amount
+                </label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.tax}
+                  onChange={(e) => setFormData({ ...formData, tax: e.target.value })}
+                />
               </div>
 
-              {/* Totals */}
-              <div className="pt-2 border-t border-border space-y-2">
+              {/* Notes */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  Notes (Optional)
+                </label>
+                <Textarea
+                  placeholder="Additional notes about this invoice..."
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  rows={3}
+                />
+              </div>
+
+              {/* Summary */}
+              <div className="pt-4 border-t border-border space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span className="text-foreground">
-                    ${(extractedData.total - extractedData.tax).toFixed(2)}
-                  </span>
+                  <span className="text-foreground">${calculateSubtotal().toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Tax</span>
-                  <span className="text-foreground">
-                    ${extractedData.tax.toFixed(2)}
-                  </span>
+                  <span className="text-foreground">${(parseFloat(formData.tax) || 0).toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-base font-semibold">
+                <div className="flex justify-between text-lg font-semibold">
                   <span className="text-foreground">Total</span>
-                  <span className="text-primary">
-                    ${extractedData.total.toFixed(2)}
-                  </span>
+                  <span className="text-primary">${calculateTotal().toFixed(2)}</span>
                 </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-2 pt-2">
-                <Button variant="gpt" className="flex-1">
-                  Edit
-                </Button>
-                <Button className="flex-1">
-                  Save Invoice
-                </Button>
               </div>
             </CardContent>
           </Card>
-        )}
+
+          {/* Submit Button */}
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="gpt"
+              className="flex-1"
+              onClick={() => navigate('/dashboard')}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" className="flex-1" disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Save Invoice
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
       </div>
     </AppLayout>
   );

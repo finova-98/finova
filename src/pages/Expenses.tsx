@@ -1,7 +1,20 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ExpenseCard } from "@/components/cards/ExpenseCard";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/lib/supabase";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Search, StickyNote, Plus, IndianRupee, Tag, Calendar, CheckCircle2 } from "lucide-react";
 import {
@@ -14,26 +27,84 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 
-const allExpenses = [
-    { id: "1", title: "Office Supplies", category: "Office", date: "Dec 5, 2024", amount: 125, status: "paid" as const },
-    { id: "2", title: "Team Lunch", category: "Food", date: "Dec 3, 2024", amount: 96, status: "paid" as const },
-    { id: "3", title: "Software License", category: "Software", date: "Dec 1, 2024", amount: 180, status: "pending" as const },
-    { id: "4", title: "Cloud Hosting", category: "Software", date: "Nov 28, 2024", amount: 240, status: "paid" as const },
-    { id: "5", title: "Client Meeting", category: "Travel", date: "Nov 25, 2024", amount: 450, status: "paid" as const },
-    { id: "6", title: "Marketing Campaign", category: "Marketing", date: "Nov 20, 2024", amount: 840, status: "pending" as const },
-    { id: "7", title: "Office Rent", category: "Office", date: "Nov 15, 2024", amount: 1280, status: "paid" as const },
-    { id: "8", title: "Equipment Purchase", category: "Office", date: "Nov 10, 2024", amount: 549, status: "overdue" as const },
-];
-
 type FilterStatus = "all" | "paid" | "pending" | "overdue";
 
 const categories = ["Office", "Food", "Software", "Travel", "Marketing", "Utilities", "Other"];
 
 export default function Expenses() {
+    const { user } = useAuth();
     const [searchQuery, setSearchQuery] = useState("");
     const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [allExpenses, setAllExpenses] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
     const { toast } = useToast();
+
+    // Load expenses from Supabase
+    useEffect(() => {
+        if (user) {
+            loadExpenses();
+        }
+    }, [user]);
+
+    const loadExpenses = async () => {
+        if (!user) return;
+        
+        setIsLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('expenses')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('date', { ascending: false });
+
+            if (error) throw error;
+            setAllExpenses(data || []);
+        } catch (error: any) {
+            toast({
+                title: 'Error loading expenses',
+                description: error.message,
+                variant: 'destructive',
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleDeleteExpense = async (id: string) => {
+        setExpenseToDelete(id);
+    };
+
+    const confirmDelete = async () => {
+        if (!user || !expenseToDelete) return;
+        
+        try {
+            const { error } = await supabase
+                .from('expenses')
+                .delete()
+                .eq('id', expenseToDelete)
+                .eq('user_id', user.id);
+
+            if (error) throw error;
+
+            toast({
+                title: 'Expense deleted',
+                description: 'The expense has been removed.',
+            });
+
+            // Reload expenses
+            loadExpenses();
+        } catch (error: any) {
+            toast({
+                title: 'Error deleting expense',
+                description: error.message,
+                variant: 'destructive',
+            });
+        } finally {
+            setExpenseToDelete(null);
+        }
+    };
 
     // Form state
     const [formData, setFormData] = useState({
@@ -59,10 +130,10 @@ export default function Expenses() {
         { label: "Overdue", value: "overdue" },
     ];
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!formData.title || !formData.amount || !formData.category) {
+        if (!formData.title || !formData.amount || !formData.category || !user) {
             toast({
                 title: "Missing fields",
                 description: "Please fill in all required fields",
@@ -71,22 +142,48 @@ export default function Expenses() {
             return;
         }
 
-        // In a real app, this would save to a database
-        toast({
-            title: "Expense added!",
-            description: `${formData.title} - ₹${formData.amount}`,
-        });
+        try {
+            const { error } = await supabase
+                .from('expenses')
+                .insert([
+                    {
+                        user_id: user.id,
+                        title: formData.title,
+                        amount: parseFloat(formData.amount),
+                        category: formData.category,
+                        date: formData.date,
+                        description: formData.description || null,
+                        status: formData.status,
+                    }
+                ]);
 
-        // Reset form
-        setFormData({
-            title: "",
-            amount: "",
-            category: "",
-            date: new Date().toISOString().split('T')[0],
-            description: "",
-            status: "paid",
-        });
-        setIsDialogOpen(false);
+            if (error) throw error;
+
+            toast({
+                title: "Expense added!",
+                description: `${formData.title} - ₹${formData.amount}`,
+            });
+
+            // Reset form
+            setFormData({
+                title: "",
+                amount: "",
+                category: "",
+                date: new Date().toISOString().split('T')[0],
+                description: "",
+                status: "paid",
+            });
+            setIsDialogOpen(false);
+            
+            // Reload expenses
+            loadExpenses();
+        } catch (error: any) {
+            toast({
+                title: "Error adding expense",
+                description: error.message,
+                variant: "destructive",
+            });
+        }
     };
 
     return (
@@ -125,24 +222,42 @@ export default function Expenses() {
 
                 {/* Expense List */}
                 <div className="space-y-2">
-                    {filteredExpenses.map((expense, index) => (
-                        <ExpenseCard
-                            key={expense.id}
-                            {...expense}
-                            animationDelay={200 + index * 50}
-                        />
-                    ))}
+                    {isLoading ? (
+                        // Loading skeleton
+                        Array.from({ length: 3 }).map((_, index) => (
+                            <div key={index} className="bg-card rounded-2xl p-4 border border-border">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1 space-y-2">
+                                        <Skeleton className="h-5 w-3/4" />
+                                        <Skeleton className="h-4 w-1/2" />
+                                    </div>
+                                    <Skeleton className="h-6 w-20" />
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        filteredExpenses.map((expense, index) => (
+                            <ExpenseCard
+                                key={expense.id}
+                                {...expense}
+                                animationDelay={200 + index * 50}
+                                onDelete={handleDeleteExpense}
+                            />
+                        ))
+                    )}
                 </div>
 
                 {/* Empty State */}
-                {filteredExpenses.length === 0 && (
+                {!isLoading && filteredExpenses.length === 0 && (
                     <div className="text-center py-12 animate-fade-in">
                         <div className="w-16 h-16 rounded-3xl bg-muted mx-auto mb-4 flex items-center justify-center">
                             <StickyNote className="h-8 w-8 text-muted-foreground" />
                         </div>
                         <h3 className="font-medium text-foreground mb-1">No expenses found</h3>
                         <p className="text-sm text-muted-foreground">
-                            Try adjusting your search or filter
+                            {searchQuery || filterStatus !== "all" 
+                                ? "Try adjusting your search or filter"
+                                : "Start by adding your first expense"}
                         </p>
                     </div>
                 )}
@@ -292,6 +407,24 @@ export default function Expenses() {
                         </form>
                     </DialogContent>
                 </Dialog>
+
+                {/* Delete Confirmation Dialog */}
+                <AlertDialog open={!!expenseToDelete} onOpenChange={(open) => !open && setExpenseToDelete(null)}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Expense?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete this expense from your records.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">
+                                Delete
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </div>
         </AppLayout>
     );

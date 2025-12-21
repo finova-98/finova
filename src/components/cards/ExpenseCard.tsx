@@ -1,7 +1,8 @@
 import { Card } from "@/components/ui/card";
-import { ChevronRight, StickyNote } from "lucide-react";
+import { ChevronRight, StickyNote, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 
 interface ExpenseCardProps {
     id: string;
@@ -11,6 +12,7 @@ interface ExpenseCardProps {
     amount: number;
     status?: "paid" | "pending" | "overdue";
     animationDelay?: number;
+    onDelete?: (id: string) => void;
 }
 
 export function ExpenseCard({
@@ -21,6 +23,7 @@ export function ExpenseCard({
     amount,
     status = "paid",
     animationDelay = 0,
+    onDelete,
 }: ExpenseCardProps) {
     const navigate = useNavigate();
 
@@ -28,6 +31,13 @@ export function ExpenseCard({
         paid: "bg-primary/10 text-primary",
         pending: "bg-yellow-500/10 text-yellow-600",
         overdue: "bg-destructive/10 text-destructive",
+    };
+
+    const handleDelete = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onDelete) {
+            onDelete(id);
+        }
     };
 
     return (
@@ -64,6 +74,18 @@ export function ExpenseCard({
                         </span>
                     </div>
                 </div>
+
+                {/* Delete Button */}
+                {onDelete && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0"
+                        onClick={handleDelete}
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </Button>
+                )}
 
                 {/* Arrow */}
                 <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />

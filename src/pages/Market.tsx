@@ -32,11 +32,11 @@ const generateMockChartData = (baseValue: number, points: number) => {
 };
 
 const initialStocks = [
-    { symbol: "RELIANCE.NS", name: "Reliance Industries", price: 2450.50, change: 15.25, isPositive: true },
-    { symbol: "TCS.NS", name: "Tata Consultancy Svcs", price: 3890.80, change: -12.45, isPositive: false },
-    { symbol: "HDFCBANK.NS", name: "HDFC Bank", price: 1640.85, change: 22.10, isPositive: true },
-    { symbol: "INFY.NS", name: "Infosys Ltd", price: 1560.20, change: -8.50, isPositive: false },
-    { symbol: "ICICIBANK.NS", name: "ICICI Bank", price: 1020.40, change: 10.85, isPositive: true },
+    { symbol: "RELIANCE.BSE", name: "Reliance Industries", price: 2450.50, change: 15.25, isPositive: true },
+    { symbol: "TCS.BSE", name: "Tata Consultancy Svcs", price: 3890.80, change: -12.45, isPositive: false },
+    { symbol: "HDFCBANK.BSE", name: "HDFC Bank", price: 1640.85, change: 22.10, isPositive: true },
+    { symbol: "INFY.BSE", name: "Infosys Ltd", price: 1560.20, change: -8.50, isPositive: false },
+    { symbol: "ICICIBANK.BSE", name: "ICICI Bank", price: 1020.40, change: 10.85, isPositive: true },
 ];
 
 export default function Market() {
@@ -45,7 +45,7 @@ export default function Market() {
     const [chartData, setChartData] = useState<any[]>(generateMockChartData(initialStocks[0].price, 20));
 
     // API State
-    const apiKey = import.meta.env.VITE_FINNHUB_API_KEY || "";
+    const apiKey = import.meta.env.VITE_ALPHA_VANTAGE_API_KEY || "";
     const isLive = !!apiKey;
     const [isLoading, setIsLoading] = useState(false);
     const [apiError, setApiError] = useState<string | null>(null);
@@ -65,15 +65,18 @@ export default function Market() {
 
         if (isLive) {
             try {
-                // Finnhub search endpoint
-                const response = await axios.get(`https://finnhub.io/api/v1/search?q=${searchQuery}&token=${apiKey}`);
-                if (response.data && response.data.result) {
-                    // Filter for NSE/BSE if possible, but Finnhub returns global. 
-                    // We'll show top 5 results.
-                    setSearchResults(response.data.result.slice(0, 5));
+                // Alpha Vantage search endpoint
+                const response = await axios.get(`https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${searchQuery}&apikey=${apiKey}`);
+                if (response.data && response.data.bestMatches) {
+                    const matches = response.data.bestMatches.slice(0, 5).map((match: any) => ({
+                        description: match['2. name'],
+                        symbol: match['1. symbol'],
+                        type: match['3. type']
+                    }));
+                    setSearchResults(matches);
                 }
             } catch (error) {
-                console.error("Search error:", error);
+                // Silently handle search errors
             } finally {
                 setIsSearching(false);
             }
@@ -134,10 +137,12 @@ export default function Market() {
     // Fetch Stock Quote
     const fetchQuote = async (symbol: string, key: string) => {
         try {
-            const response = await axios.get(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${key}`);
-            if (response.data.c) {
-                const currentPrice = response.data.c;
-                const prevClose = response.data.pc;
+            const response = await axios.get(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${key}`);
+            const quote = response.data['Global Quote'];
+            
+            if (quote && quote['05. price']) {
+                const currentPrice = parseFloat(quote['05. price']);
+                const prevClose = parseFloat(quote['08. previous close']);
                 const change = ((currentPrice - prevClose) / prevClose) * 100;
 
                 if (apiError) setApiError(null);
@@ -150,11 +155,11 @@ export default function Market() {
             }
             return null;
         } catch (error: any) {
-            console.error(`Error fetching quote for ${symbol}:`, error);
-            if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-                setApiError("Invalid API Key. Please check VITE_FINNHUB_API_KEY.");
-            } else if (error.response && error.response.status === 429) {
-                setApiError("API Rate Limit Exceeded.");
+            // Silently handle API errors to avoid console spam
+            if (error.response?.status === 401 || error.response?.status === 403) {
+                setApiError("Invalid Alpha Vantage API Key. Please check your configuration.");
+            } else if (error.message?.includes('rate limit')) {
+                setApiError("API Rate Limit Exceeded (25 requests/day on free tier).");
             }
             return null;
         }
@@ -191,22 +196,22 @@ export default function Market() {
     // Fetch Candles
     const fetchChart = async (symbol: string, key: string) => {
         if (!key) return;
-        const end = Math.floor(Date.now() / 1000);
-        const start = end - (30 * 24 * 60 * 60);
 
         try {
-            const response = await axios.get(`https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${start}&to=${end}&token=${key}`);
-            if (response.data.s === "ok") {
-                const closes = response.data.c;
-                const times = response.data.t;
-                const formattedData = times.map((time: number, index: number) => ({
-                    time: new Date(time * 1000).toLocaleDateString(),
-                    value: Number(closes[index].toFixed(2))
+            const response = await axios.get(`https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=${key}`);
+            const timeSeries = response.data['Time Series (Daily)'];
+            
+            if (timeSeries) {
+                const dates = Object.keys(timeSeries).slice(0, 30).reverse();
+                const formattedData = dates.map(date => ({
+                    time: new Date(date).toLocaleDateString(),
+                    value: parseFloat(timeSeries[date]['4. close'])
                 }));
                 setChartData(formattedData);
             }
-        } catch (error) {
-            console.error("Error fetching chart:", error);
+        } catch (error: any) {
+            // Silently handle chart fetch errors (likely API key issues)
+            // Chart will remain empty or show previous data
         }
     };
 

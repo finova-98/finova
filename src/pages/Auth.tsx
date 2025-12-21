@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Bot, Mail, Lock, ArrowLeft, Eye, EyeOff } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Auth() {
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { signIn, signUp, user } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -18,38 +18,41 @@ export default function Auth() {
     confirmPassword: "",
   });
 
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!form.email || !form.password) {
-      toast({
-        title: "Missing fields",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      });
       return;
     }
 
     if (!isLogin && form.password !== form.confirmPassword) {
-      toast({
-        title: "Passwords don't match",
-        description: "Please make sure your passwords match",
-        variant: "destructive",
-      });
       return;
     }
 
     setIsLoading(true);
 
-    // Simulate authentication
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    toast({
-      title: isLogin ? "Welcome back!" : "Account created!",
-      description: "Redirecting to dashboard...",
-    });
-
-    setTimeout(() => navigate('/dashboard'), 500);
+    try {
+      if (isLogin) {
+        const { error } = await signIn(form.email, form.password);
+        if (!error) {
+          navigate('/dashboard');
+        }
+      } else {
+        const { error } = await signUp(form.email, form.password);
+        if (!error) {
+          // User will be redirected after email confirmation
+        }
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
