@@ -1,6 +1,7 @@
 import axios from "axios";
 
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
+const OPENROUTER_CHAT_API_KEY = import.meta.env.VITE_OPENROUTER_CHAT_API_KEY;
+const OPENROUTER_VISION_API_KEY = import.meta.env.VITE_OPENROUTER_VISION_API_KEY;
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 export interface ChatMessage {
@@ -40,8 +41,8 @@ export async function sendChatMessageWithVision(
     messages: ChatMessage[],
     model: string = "google/gemini-2.0-flash-exp:free"
 ): Promise<string> {
-    if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === "your_openrouter_api_key_here") {
-        throw new Error("OpenRouter API key is not configured. Please add VITE_OPENROUTER_API_KEY to your .env file");
+    if (!OPENROUTER_VISION_API_KEY || OPENROUTER_VISION_API_KEY === "your_openrouter_api_key_here") {
+        throw new Error("OpenRouter Vision API key is not configured. Please add VITE_OPENROUTER_VISION_API_KEY to your .env file");
     }
 
     try {
@@ -53,7 +54,7 @@ export async function sendChatMessageWithVision(
             },
             {
                 headers: {
-                    "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+                    "Authorization": `Bearer ${OPENROUTER_VISION_API_KEY}`,
                     "Content-Type": "application/json",
                     "HTTP-Referer": window.location.origin,
                     "X-Title": "AI Finance Chat",
@@ -78,46 +79,65 @@ export async function sendChatMessageWithVision(
 /**
  * Send a chat message to OpenRouter API
  * @param messages - Array of chat messages
- * @param model - Model to use (default: mistralai/mistral-7b-instruct:free)
+ * @param model - Model to use (default: google/gemini-2.0-flash-exp:free)
  * @returns Response from OpenRouter
  */
 export async function sendChatMessage(
     messages: ChatMessage[],
-    model: string = "mistralai/mistral-7b-instruct:free"
+    model: string = "google/gemini-2.0-flash-exp:free",
+    retries: number = 2
 ): Promise<string> {
-    if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === "your_openrouter_api_key_here") {
-        throw new Error("OpenRouter API key is not configured. Please add VITE_OPENROUTER_API_KEY to your .env file");
+    if (!OPENROUTER_CHAT_API_KEY || OPENROUTER_CHAT_API_KEY === "your_openrouter_api_key_here") {
+        throw new Error("OpenRouter Chat API key is not configured. Please add VITE_OPENROUTER_CHAT_API_KEY to your .env file");
     }
 
-    try {
-        const response = await axios.post<OpenRouterResponse>(
-            OPENROUTER_API_URL,
-            {
-                model: model,
-                messages: messages,
-            },
-            {
-                headers: {
-                    "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": window.location.origin, // Optional, for rankings
-                    "X-Title": "AI Finance Chat", // Optional, shows in rankings
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            const response = await axios.post<OpenRouterResponse>(
+                OPENROUTER_API_URL,
+                {
+                    model: model,
+                    messages: messages,
                 },
-            }
-        );
+                {
+                    headers: {
+                        "Authorization": `Bearer ${OPENROUTER_CHAT_API_KEY}`,
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": window.location.origin,
+                        "X-Title": "AI Finance Chat",
+                    },
+                }
+            );
 
-        if (response.data.choices && response.data.choices.length > 0) {
-            return response.data.choices[0].message.content;
-        } else {
-            throw new Error("No response from OpenRouter");
+            if (response.data.choices && response.data.choices.length > 0) {
+                return response.data.choices[0].message.content;
+            } else {
+                throw new Error("No response from OpenRouter");
+            }
+        } catch (error) {
+            if (axios.isAxiosError(error)) {
+                const status = error.response?.status;
+                const errorMessage = error.response?.data?.error?.message || error.message;
+                
+                // If rate limit and we have retries left, wait and retry
+                if (status === 429 && attempt < retries) {
+                    const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue;
+                }
+                
+                // Better error message for rate limits
+                if (status === 429) {
+                    throw new Error("Rate limit exceeded. The free tier has limited requests. Please wait a moment and try again.");
+                }
+                
+                throw new Error(`OpenRouter API Error: ${errorMessage}`);
+            }
+            throw error;
         }
-    } catch (error) {
-        if (axios.isAxiosError(error)) {
-            const errorMessage = error.response?.data?.error?.message || error.message;
-            throw new Error(`OpenRouter API Error: ${errorMessage}`);
-        }
-        throw error;
     }
+    
+    throw new Error("Failed after multiple retries");
 }
 
 /**

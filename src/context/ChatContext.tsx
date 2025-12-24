@@ -1,7 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { sendChatMessage, buildConversationHistory } from "@/lib/openrouter";
+import { sendChatMessage } from "@/lib/groq";
+import { buildConversationHistory } from "@/lib/openrouter";
 import { extractPDFText, isPDF, formatPDFTextForAI } from "@/lib/pdfParser";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "./AuthContext";
@@ -180,36 +181,48 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 { role: "user", content: userPrompt }
             ], marketContext);
 
-            const response = await sendChatMessage(conversationHistory);
+            try {
+                const response = await sendChatMessage(conversationHistory);
 
-            setIsTyping(false);
-            const assistantMessage: Message = {
-                id: (Date.now() + 1).toString(),
-                content: response,
-                role: "assistant"
-            };
-            setMessages(prev => [...prev, assistantMessage]);
+                setIsTyping(false);
+                const assistantMessage: Message = {
+                    id: (Date.now() + 1).toString(),
+                    content: response,
+                    role: "assistant"
+                };
+                setMessages(prev => [...prev, assistantMessage]);
 
-            // Save both messages to Supabase
-            if (user) {
-                try {
-                    await supabase.from('chat_messages').insert([
-                        {
-                            user_id: user.id,
-                            content: content || (file ? "I've uploaded an invoice for analysis" : ""),
-                            role: "user",
-                            file_name: file?.name || null,
-                            file_size: file?.size || null
-                        },
-                        {
-                            user_id: user.id,
-                            content: response,
-                            role: "assistant"
-                        }
-                    ]);
-                } catch (dbError) {
-                    console.error('Failed to save messages to database:', dbError);
+                // Save both messages to Supabase
+                if (user) {
+                    try {
+                        await supabase.from('chat_messages').insert([
+                            {
+                                user_id: user.id,
+                                content: content || (file ? "I've uploaded an invoice for analysis" : ""),
+                                role: "user",
+                                file_name: file?.name || null,
+                                file_size: file?.size || null
+                            },
+                            {
+                                user_id: user.id,
+                                content: response,
+                                role: "assistant"
+                            }
+                        ]);
+                    } catch (dbError) {
+                        console.error("Failed to save messages to DB:", dbError);
+                    }
                 }
+            } catch (apiError) {
+                setIsTyping(false);
+                const errorMsg = apiError instanceof Error ? apiError.message : "Failed to get response";
+                toast({
+                    title: "Chat Error",
+                    description: errorMsg,
+                    variant: "destructive"
+                });
+                // Remove the user message if API failed
+                setMessages(prev => prev.slice(0, -1));
             }
 
         } catch (error) {

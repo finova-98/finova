@@ -77,7 +77,7 @@ export default function Upload() {
         reader.readAsDataURL(file);
       });
 
-      // Use AI with vision to extract invoice data
+      // Use OpenRouter with Llama Vision to extract invoice data
       const messages = [
         {
           role: "system" as const,
@@ -140,7 +140,7 @@ IMPORTANT:
         }
       ];
 
-      const response = await sendChatMessageWithVision(messages, "google/gemini-2.0-flash-exp:free");
+      const response = await sendChatMessageWithVision(messages, "nvidia/nemotron-nano-12b-v2-vl:free");
       
       // Parse AI response
       let extractedData;
@@ -191,7 +191,7 @@ IMPORTANT:
 
       toast({
         title: "Data extracted!",
-        description: "Invoice data has been extracted. Please review and edit if needed.",
+        description: "Invoice data has been extracted successfully. Please review and edit if needed.",
       });
     } catch (error) {
       console.error("Extraction error:", error);
