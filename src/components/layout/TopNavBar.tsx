@@ -37,16 +37,6 @@ export function TopNavBar({
       <div className="flex items-center justify-between h-14 px-4">
         {/* Left - Menu */}
         <div className="w-10">
-          {showMenu && (
-            <Button 
-              variant="icon" 
-              size="icon-sm" 
-              onClick={onMenuClick}
-              className="text-foreground/70 hover:text-foreground"
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-          )}
         </div>
 
         {/* Center - Title */}

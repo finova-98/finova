@@ -5,7 +5,13 @@ const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 export interface ChatMessage {
     role: "user" | "assistant" | "system";
-    content: string;
+    content: string | Array<{
+        type: "text" | "image_url";
+        text?: string;
+        image_url?: {
+            url: string;
+        };
+    }>;
 }
 
 export interface OpenRouterResponse {
@@ -22,6 +28,51 @@ export interface OpenRouterResponse {
         completion_tokens: number;
         total_tokens: number;
     };
+}
+
+/**
+ * Send a chat message with vision support to OpenRouter API
+ * @param messages - Array of chat messages (can include images)
+ * @param model - Model to use (default: mistralai/mistral-7b-instruct:free)
+ * @returns Response from OpenRouter
+ */
+export async function sendChatMessageWithVision(
+    messages: ChatMessage[],
+    model: string = "google/gemini-2.0-flash-exp:free"
+): Promise<string> {
+    if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === "your_openrouter_api_key_here") {
+        throw new Error("OpenRouter API key is not configured. Please add VITE_OPENROUTER_API_KEY to your .env file");
+    }
+
+    try {
+        const response = await axios.post<OpenRouterResponse>(
+            OPENROUTER_API_URL,
+            {
+                model: model,
+                messages: messages,
+            },
+            {
+                headers: {
+                    "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": window.location.origin,
+                    "X-Title": "AI Finance Chat",
+                },
+            }
+        );
+
+        if (response.data.choices && response.data.choices.length > 0) {
+            return response.data.choices[0].message.content;
+        } else {
+            throw new Error("No response from OpenRouter");
+        }
+    } catch (error) {
+        if (axios.isAxiosError(error)) {
+            const errorMessage = error.response?.data?.error?.message || error.message;
+            throw new Error(`OpenRouter API Error: ${errorMessage}`);
+        }
+        throw error;
+    }
 }
 
 /**

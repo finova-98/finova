@@ -5,13 +5,17 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Bot, Mail, Lock, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Auth() {
   const navigate = useNavigate();
   const { signIn, signUp, user } = useAuth();
+  const { toast } = useToast();
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -25,14 +29,89 @@ export default function Auth() {
     }
   }, [user, navigate]);
 
+  // Email validation function
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Password validation function
+  const validatePassword = (password: string): boolean => {
+    return password.length >= 6;
+  };
+
+  // Handle email change with validation
+  const handleEmailChange = (email: string) => {
+    setForm({ ...form, email });
+    if (email && !validateEmail(email)) {
+      setEmailError("Please enter a valid email address");
+    } else {
+      setEmailError("");
+    }
+  };
+
+  // Handle password change with validation
+  const handlePasswordChange = (password: string) => {
+    setForm({ ...form, password });
+    if (password && !validatePassword(password)) {
+      setPasswordError("Password must be at least 6 characters");
+    } else {
+      setPasswordError("");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!form.email || !form.password) {
+    // Validate email
+    if (!form.email) {
+      setEmailError("Email is required");
+      toast({
+        title: "Validation Error",
+        description: "Please enter your email address",
+        variant: "destructive",
+      });
       return;
     }
 
+    if (!validateEmail(form.email)) {
+      setEmailError("Please enter a valid email address");
+      toast({
+        title: "Invalid Email",
+        description: "Please enter a valid email address (e.g., user@example.com)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate password
+    if (!form.password) {
+      setPasswordError("Password is required");
+      toast({
+        title: "Validation Error",
+        description: "Please enter your password",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!validatePassword(form.password)) {
+      setPasswordError("Password must be at least 6 characters");
+      toast({
+        title: "Invalid Password",
+        description: "Password must be at least 6 characters long",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate confirm password for signup
     if (!isLogin && form.password !== form.confirmPassword) {
+      toast({
+        title: "Passwords don't match",
+        description: "Please make sure both passwords match",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -43,11 +122,26 @@ export default function Auth() {
         const { error } = await signIn(form.email, form.password);
         if (!error) {
           navigate('/dashboard');
+        } else {
+          toast({
+            title: "Sign In Failed",
+            description: error.message || "Invalid email or password",
+            variant: "destructive",
+          });
         }
       } else {
         const { error } = await signUp(form.email, form.password);
         if (!error) {
-          // User will be redirected after email confirmation
+          toast({
+            title: "Account Created!",
+            description: "Please check your email to verify your account",
+          });
+        } else {
+          toast({
+            title: "Sign Up Failed",
+            description: error.message || "Failed to create account",
+            variant: "destructive",
+          });
         }
       }
     } finally {
@@ -103,10 +197,14 @@ export default function Auth() {
                       type="email"
                       placeholder="you@example.com"
                       value={form.email}
-                      onChange={(e) => setForm({ ...form, email: e.target.value })}
-                      className="pl-11"
+                      onChange={(e) => handleEmailChange(e.target.value)}
+                      className={`pl-11 ${emailError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                      required
                     />
                   </div>
+                  {emailError && (
+                    <p className="text-xs text-destructive">{emailError}</p>
+                  )}
                 </div>
 
                 {/* Password */}
@@ -120,8 +218,10 @@ export default function Auth() {
                       type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
                       value={form.password}
-                      onChange={(e) => setForm({ ...form, password: e.target.value })}
-                      className="pl-11 pr-11"
+                      onChange={(e) => handlePasswordChange(e.target.value)}
+                      className={`pl-11 pr-11 ${passwordError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                      required
+                      minLength={6}
                     />
                     <button
                       type="button"
@@ -135,6 +235,9 @@ export default function Auth() {
                       )}
                     </button>
                   </div>
+                  {passwordError && (
+                    <p className="text-xs text-destructive">{passwordError}</p>
+                  )}
                 </div>
 
                 {/* Confirm Password (Sign Up only) */}
@@ -151,8 +254,12 @@ export default function Auth() {
                         value={form.confirmPassword}
                         onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
                         className="pl-11"
+                        required
                       />
                     </div>
+                    {form.confirmPassword && form.password !== form.confirmPassword && (
+                      <p className="text-xs text-destructive">Passwords do not match</p>
+                    )}
                   </div>
                 )}
 

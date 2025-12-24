@@ -1,12 +1,12 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, RefreshCw, DollarSign, Wallet, PiggyBank, TrendingUp, Upload, Plus, Trash2 } from "lucide-react";
+import { AlertCircle, RefreshCw, DollarSign, Wallet, PiggyBank, TrendingUp, Upload, Plus, Trash2, Camera, FileText } from "lucide-react";
 import { ExpenseCard } from "@/components/cards/ExpenseCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNavigate } from "react-router-dom";
@@ -20,6 +20,13 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import {
     AreaChart,
     Area,
@@ -42,6 +49,8 @@ export default function Dashboard() {
     const [expenses, setExpenses] = useState<any[]>([]);
     const [totalSpending, setTotalSpending] = useState(0);
     const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);
+    const [showAddDialog, setShowAddDialog] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const getUserName = () => {
         if (user?.user_metadata?.full_name) {
@@ -144,6 +153,28 @@ export default function Dashboard() {
         }, {});
 
         return Object.entries(grouped).map(([name, value]) => ({ name, value }));
+    };
+
+    const handleUploadPhoto = () => {
+        setShowAddDialog(false);
+        // Check if device supports camera
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            // Navigate to upload page with the file
+            navigate('/upload', { state: { file } });
+        }
+    };
+
+    const handleFillForm = () => {
+        setShowAddDialog(false);
+        // Navigate to upload page in manual mode
+        navigate('/upload', { state: { mode: 'manual' } });
     };
 
     const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1'];
@@ -409,13 +440,63 @@ export default function Dashboard() {
                 <div className="fixed bottom-24 right-4 z-40">
                     <Button
                         size="lg"
-                        onClick={() => navigate('/upload')}
+                        onClick={() => setShowAddDialog(true)}
                         className="rounded-full h-14 w-14 shadow-soft-xl animate-fade-in-up"
                         style={{ animationDelay: "400ms" }}
                     >
                         <Plus className="h-6 w-6" />
                     </Button>
                 </div>
+
+                {/* Hidden file input for camera/upload */}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileChange}
+                    className="hidden"
+                />
+
+                {/* Add Option Dialog */}
+                <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Add New Entry</DialogTitle>
+                            <DialogDescription>
+                                Choose how you'd like to add your invoice or expense
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-3 py-4">
+                            <Button
+                                variant="outline"
+                                className="h-auto py-6 flex flex-col items-center gap-3 hover:bg-primary/10 hover:border-primary"
+                                onClick={handleUploadPhoto}
+                            >
+                                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                                    <Camera className="h-6 w-6 text-primary" />
+                                </div>
+                                <div className="text-center">
+                                    <p className="font-medium">Upload Photo</p>
+                                    <p className="text-xs text-muted-foreground">Scan invoice or receipt</p>
+                                </div>
+                            </Button>
+                            <Button
+                                variant="outline"
+                                className="h-auto py-6 flex flex-col items-center gap-3 hover:bg-primary/10 hover:border-primary"
+                                onClick={handleFillForm}
+                            >
+                                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                                    <FileText className="h-6 w-6 text-primary" />
+                                </div>
+                                <div className="text-center">
+                                    <p className="font-medium">Fill Up Form</p>
+                                    <p className="text-xs text-muted-foreground">Enter details manually</p>
+                                </div>
+                            </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Delete Invoice Confirmation Dialog */}
                 <AlertDialog open={!!invoiceToDelete} onOpenChange={(open) => !open && setInvoiceToDelete(null)}>
