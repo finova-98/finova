@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { sendChatMessage } from "@/lib/groq";
 import { buildConversationHistory } from "@/lib/openrouter";
@@ -23,6 +23,8 @@ interface ChatContextType {
     isTyping: boolean;
     sendMessage: (content: string, file?: File) => Promise<void>;
     clearChat: () => void;
+    refreshChat: () => Promise<void>;
+    isLoading: boolean;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -53,18 +55,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const [marketContext, setMarketContext] = useState<string>("");
     const [isLoading, setIsLoading] = useState(false);
 
-    // Load messages from Supabase
-    useEffect(() => {
-        if (user) {
-            loadMessages();
-        } else {
-            setMessages(initialMessages);
-        }
-    }, [user]);
-
-    const loadMessages = async () => {
+    const loadMessages = useCallback(async () => {
         if (!user) return;
-        
+
         setIsLoading(true);
         try {
             const { data, error } = await supabase
@@ -74,7 +67,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 .order('created_at', { ascending: true });
 
             if (error) throw error;
-            
+
             if (data && data.length > 0) {
                 const loadedMessages: Message[] = data.map((msg: any) => ({
                     id: msg.id,
@@ -95,7 +88,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [user]);
+
+    // Load messages from Supabase
+    useEffect(() => {
+        if (user) {
+            loadMessages();
+        } else {
+            setMessages(initialMessages);
+        }
+    }, [user, loadMessages]);
 
     // Fetch Market Data Logic
     useEffect(() => {
@@ -111,7 +113,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                     try {
                         const response = await axios.get(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${stock.symbol}&apikey=${apiKey}`);
                         const quote = response.data['Global Quote'];
-                        
+
                         if (quote && quote['05. price']) {
                             const price = parseFloat(quote['05. price']);
                             const prevClose = parseFloat(quote['08. previous close']);
@@ -262,7 +264,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     const clearChat = async () => {
         setMessages(initialMessages);
-        
+
         if (user) {
             try {
                 await supabase
@@ -273,12 +275,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 console.error('Failed to clear chat from database:', error);
             }
         }
-        
+
         toast({ title: "Chat cleared", description: "History reset." });
     };
 
+    const refreshChat = async () => {
+        await loadMessages();
+    };
+
     return (
-        <ChatContext.Provider value={{ messages, isTyping, sendMessage, clearChat }}>
+        <ChatContext.Provider value={{ messages, isTyping, sendMessage, clearChat, refreshChat, isLoading }}>
             {children}
         </ChatContext.Provider>
     );

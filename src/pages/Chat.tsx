@@ -4,7 +4,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { ChatMessageBubble } from "@/components/chat/ChatMessageBubble";
 import { ChatInputBar } from "@/components/chat/ChatInputBar";
 import { Button } from "@/components/ui/button";
-import { Sparkles, TrendingUp, FileText, HelpCircle, Paperclip, Trash2 } from "lucide-react";
+import { Sparkles, TrendingUp, FileText, HelpCircle, Paperclip, Trash2, RefreshCw } from "lucide-react";
 import { useChat } from "@/context/ChatContext";
 
 const suggestedPrompts = [
@@ -15,7 +15,7 @@ const suggestedPrompts = [
 ];
 
 export default function Chat() {
-  const { messages, isTyping, sendMessage, clearChat } = useChat();
+  const { messages, isTyping, sendMessage, clearChat, refreshChat = async () => { }, isLoading = false } = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -33,9 +33,20 @@ export default function Chat() {
   return (
     <AppLayout title="Financial Assistant" showBottomNav={true}>
       <div className="flex flex-col h-[calc(100vh-8rem)] relative">
-        {/* Clear Chat Button */}
-        {messages.length > 1 && (
-          <div className="absolute top-2 right-4 z-10">
+        {/* Header Buttons */}
+        <div className="absolute top-2 right-4 z-10 flex gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={refreshChat}
+            disabled={isLoading}
+            className="h-8 w-8 text-muted-foreground hover:text-primary transition-colors"
+            title="Refresh Chat"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+
+          {messages.length > 1 && (
             <Button
               variant="ghost"
               size="icon"
@@ -45,8 +56,8 @@ export default function Chat() {
             >
               <Trash2 className="h-4 w-4" />
             </Button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto scrollbar-hide py-4 pb-32">
