@@ -33,12 +33,12 @@ export interface GroqResponse {
 /**
  * Send a chat message with vision support to Groq API
  * @param messages - Array of chat messages (can include images)
- * @param model - Model to use (default: llama-4-maverick-17b-128e-instruct)
+ * @param model - Model to use (default: llama-3.3-70b-versatile)
  * @returns Response from Groq
  */
 export async function sendChatMessageWithVision(
     messages: ChatMessage[],
-    model: string = "llama-4-maverick-17b-128e-instruct"
+    model: string = "llama-3.3-70b-versatile"
 ): Promise<string> {
     if (!GROQ_API_KEY || GROQ_API_KEY === "your_groq_api_key_here") {
         throw new Error("Groq API key is not configured. Please add VITE_GROQ_API_KEY to your .env file");
