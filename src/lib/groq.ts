@@ -78,12 +78,12 @@ export async function sendChatMessageWithVision(
 /**
  * Send a regular chat message to Groq API
  * @param messages - Array of chat messages
- * @param model - Model to use (default: qwen/qwen3.6-27b)
+ * @param model - Model to use (default: openai/gpt-oss-120b)
  * @returns Response from Groq
  */
 export async function sendChatMessage(
     messages: ChatMessage[],
-    model: string = "qwen/qwen3.6-27b"
+    model: string = "openai/gpt-oss-120b"
 ): Promise<string> {
     if (!GROQ_API_KEY || GROQ_API_KEY === "your_groq_api_key_here") {
         throw new Error("Groq API key is not configured. Please add VITE_GROQ_API_KEY to your .env file");
